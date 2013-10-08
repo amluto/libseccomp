@@ -621,6 +621,7 @@ function run_test_live() {
 	#  161: TRAP
 	#  162: TRACE (currently unsupported)
 	#  163: ERRNO
+	#  0:   SELFTEST
 	if [[ $line_act == "KILL" && $rc -eq 159 ]]; then
 		print_result $1 "SUCCESS" ""
 		stats_success=$(($stats_success+1))
@@ -634,6 +635,9 @@ function run_test_live() {
 		print_result $1 "ERROR" "unsupported action \"$line_act\""
 		stats_error=$(($stats_error+1))
 	elif [[ $line_act == "ERRNO" && $rc -eq 163 ]]; then
+		print_result $1 "SUCCESS" ""
+		stats_success=$(($stats_success+1))
+	elif [[ $line_act == "SELFTEST" && $rc -eq 0 ]]; then
 		print_result $1 "SUCCESS" ""
 		stats_success=$(($stats_success+1))
 	else

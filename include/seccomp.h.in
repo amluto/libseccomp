@@ -23,6 +23,7 @@
 #define _SECCOMP_H
 
 #include <elf.h>
+#include <signal.h>
 #include <inttypes.h>
 #include <asm/unistd.h>
 #include <linux/audit.h>
@@ -483,6 +484,61 @@ int seccomp_export_pfc(const scmp_filter_ctx ctx, int fd);
  *
  */
 int seccomp_export_bpf(const scmp_filter_ctx ctx, int fd);
+
+struct seccomp_data;
+
+/**
+ * Decode SIGSYS data to find the offending syscall arch, nr, and args.
+ * @param data the offending syscall (output)
+ * @param si the siginfo pointer passed to the signal handler
+ * @param uc the ucontext pointer passed to the signal handler
+ *
+ * If a seccomp filter causes the TRAP action, the process issuing tha
+ * syscall will receive SIGSYS.  That process can install a handler
+ * using sigaction(2) with SA_SIGINFO and call this function to find
+ * out what architecture the syscall was for, what the number was,
+ * what the instruction pointer was, and what the arguments were.
+ *
+ * The returned data is the raw information from the kernel.  You'll
+ * need to resolve the syscall number for the architecture in question
+ * in order to make sense of it.
+ *
+ * It returns a negative error code if it fails.  Checking the return
+ * value is important -- this function can fail.
+ */
+int seccomp_sigsys_decode(struct seccomp_data *data,
+			  const siginfo_t *si, const void *uc);
+
+/**
+ * Modify a signal frame to emulate a syscall return value.
+ * @param si the siginfo pointer passed to the signal handler
+ * @param uc the ucontext pointer passed to the signal handler
+ * @param ret the value that the trapping syscall should return
+ *
+ * If a seccomp filter causes the TRAP action, the process issuing tha
+ * syscall will receive SIGSYS.  That process can install a handler
+ * using sigaction(2) with SA_SIGINFO.  The handler can call this
+ * function to cause the syscall to appear to return a given value
+ * (with similar results to a filter action of ERRNO).
+ *
+ * In most cases, ret should be zero to emulate a successful syscall
+ * or a small negative number to emulate a failed syscall.
+ *
+ * Do not return from a SIGSYS handler without calling this function;
+ * the apparent return value from the syscall will be unpredictable
+ * and architecture-dependent.  (It's safe to call _exit, though.)
+ *
+ * This function modifies the signal frame and may (depending on
+ * architecture) modify the siginfo as well.  Once you've called this
+ * function, do not call it again or attempt to use
+ * seccomp_sigsys_decode on the same signal frame.
+ *
+ * It returns a negative error code if it fails.  Checking the return
+ * value is important -- this function can fail.  (It is unlikely to
+ * fail if seccomp_sigsys_decode succeeds and ret is reasonable.)
+ *
+ */
+int seccomp_sigsys_set_return_value(siginfo_t *si, void *uc, long ret);
 
 /*
  * pseudo syscall definitions

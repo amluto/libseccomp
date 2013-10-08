@@ -22,6 +22,8 @@
 #ifndef _UTIL_TEST_H
 #define _UTIL_TEST_H
 
+#include <signal.h>
+
 struct util_options {
 	int bpf_flg;
 };
@@ -33,8 +35,14 @@ int util_filter_output(const struct util_options *opts,
 
 int util_trap_install(void);
 
+int util_trap_install_custom(void (*sa)(int, siginfo_t *, void *));
+
 int util_action_parse(const char *action);
 
 int util_file_write(const char *path);
+
+int util_can_syscall(uint32_t arch);
+
+long util_issue_raw_syscall(uint32_t arch, int nr, const uint64_t args[6]);
 
 #endif

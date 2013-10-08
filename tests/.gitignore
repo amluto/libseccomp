@@ -29,3 +29,4 @@ util.pyc
 23-sim-arch_all_basic
 24-live-arg_allow
 25-sim-multilevel_chains_adv
+26-live-decode

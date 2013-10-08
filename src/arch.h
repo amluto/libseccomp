@@ -28,6 +28,8 @@
 
 #include <seccomp.h>
 
+#include <sys/ucontext.h>
+
 #include "system.h"
 
 struct db_api_arg;
@@ -102,5 +104,35 @@ int arch_syscall_rewrite(const struct arch_def *arch, bool strict,
 
 int arch_filter_rewrite(const struct arch_def *arch,
 			bool strict, int *syscall, struct db_api_arg *chain);
+
+/**
+ * Decode SIGSYS data to find the offending syscall arch, nr, and args.
+ * @param data the offending syscall (output)
+ * @param si the siginfo pointer passed to the signal handler
+ * @param uc the ucontext pointer passed to the signal handler
+ *
+ * Decodes values passed to a SIGSYS handler.
+ *
+ * This function assumes that the ucontext is native.  (Presumably,
+ * anyone using libseccomp is using the same signal ABI as the one
+ * with which they've compiled libseccomp.  This does not have to be
+ * the same libseccomp that installed the filter in the first place,
+ * though.)
+ *
+ * It returns a negative error code if it fails.
+ */
+int arch_decode_sigsys(struct seccomp_data *data, const siginfo_t *si,
+		       const void *uc_void);
+
+/**
+ * Modify a signal frame to emulate a syscall return value.
+ * @param si the siginfo pointer passed to the signal handler
+ * @param uc the ucontext pointer passed to the signal handler
+ * @param ret the value that the trapping syscall should return
+ *
+ * This implements seccomp_sigsys_set_return_value.  It can fail if
+ * the syscall arch is unsupported or if ret doesn't make sense on that arch.
+ */
+int arch_set_sigsys_return_value(siginfo_t *si, void *uc, long ret);
 
 #endif

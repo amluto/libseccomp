@@ -587,3 +587,16 @@ API int seccomp_export_bpf(const scmp_filter_ctx ctx, int fd)
 
 	return 0;
 }
+
+/* NOTE - function header comment in include/seccomp.h */
+API int seccomp_sigsys_decode(struct seccomp_data *data,
+			      const siginfo_t *si, const void *uc)
+{
+	return arch_decode_sigsys(data, si, uc);
+}
+
+/* NOTE - function header comment in include/seccomp.h */
+API int seccomp_sigsys_set_return_value(siginfo_t *si, void *uc, long ret)
+{
+	return arch_set_sigsys_return_value(si, uc, ret);
+}

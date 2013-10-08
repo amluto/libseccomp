@@ -1,0 +1,12 @@
+#
+# libseccomp regression test automation data
+#
+# Copyright (c) 2013 Andy Lutomirski <luto@amacapital.net>
+# Author: Andy Lutomirski <luto@amacapital.net>
+#
+
+test type: live
+
+# Testname
+26-live-decode	SELFTEST
+
