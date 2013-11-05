@@ -73,6 +73,7 @@ function msg_summary() {
   installation base:	$opt_prefix
   library directory:	$opt_libdir
   use system includes:	$opt_sysinc_seccomp
+  signal.h up to date:	$opt_have_sifields_sigsys
   python bindings:	$opt_bindings_python
 EOF
 }
@@ -242,6 +243,19 @@ else
 	opt_sysinc_seccomp="no"
 fi
 
+# _sifields._sigsys
+if gcc -xc -c -o .sifields.o - &>/dev/null <<EOF
+#define _GNU_SOURCE
+#include <signal.h>
+void test(siginfo_t *si) { si->_sifields._sigsys; }
+EOF
+then
+    opt_have_sifields_sigsys="yes"
+else
+    opt_have_sifields_sigsys="no"
+fi
+rm -f .sifields.o
+
 # generate the version files
 . ./version_info
 VERSION_RELEASE="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_MICRO}"
@@ -275,6 +289,7 @@ cnf_mk_entry "CONF_INSTALL_PREFIX" "$opt_prefix"
 cnf_mk_entry "CONF_INSTALL_LIBDIR" "$opt_libdir"
 cnf_entry "CONF_SYSINC_SECCOMP" "$opt_sysinc_seccomp"
 cnf_entry "CONF_BINDINGS_PYTHON" "$opt_bindings_python"
+cnf_entry "CONF_HAVE_SIFIELDS_SIGSYS" "$opt_have_sifields_sigsys"
 
 # configuration footer
 cnf_footer

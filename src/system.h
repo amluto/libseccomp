@@ -89,4 +89,21 @@ typedef struct sock_filter bpf_instr_raw;
 #define PR_GET_NO_NEW_PRIVS	39
 #endif /* PR_GET_NO_NEW_PRIVS */
 
+/* Support old glibc */
+#ifdef CONF_HAVE_SIFIELDS_SIGSYS
+
+#define SIGINFO_SIGSYS(si) (&(si)->_sifields._sigsys)
+
+#else
+
+struct sifields_sigsys {
+	void *_call_addr;
+	int _syscall;
+	unsigned int _arch;
+};
+
+#define SIGINFO_SIGSYS(si) ((struct sifields_sigsys *)&(si)->_sifields)
+
+#endif
+
 #endif
