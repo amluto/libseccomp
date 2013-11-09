@@ -21,6 +21,32 @@
 
 from libc.stdint cimport uint8_t, uint32_t, uint64_t
 
+cdef extern from "linux/seccomp.h":
+    cdef struct seccomp_data:
+        int nr
+        uint32_t arch
+        uint64_t instruction_pointer
+        uint64_t args[6]
+
+cdef extern from "signal.h":
+    ctypedef struct siginfo_t:
+        pass
+
+    ctypedef void *sigset_t
+
+    cdef struct sigaction_struct "sigaction":
+        void (*sa_sigaction)(int, siginfo_t *, void *)
+        sigset_t sa_mask
+        int sa_flags
+
+    int sigemptyset(sigset_t *set)
+    int sigaction(int signum, const sigaction_struct *act,
+                  sigaction_struct *oldact)
+
+    int SIGSYS
+    int SA_SIGINFO
+    int SA_NODEFER
+
 cdef extern from "seccomp.h":
 
     ctypedef void* scmp_filter_ctx
@@ -93,6 +119,11 @@ cdef extern from "seccomp.h":
 
     int seccomp_export_pfc(scmp_filter_ctx ctx, int fd)
     int seccomp_export_bpf(scmp_filter_ctx ctx, int fd)
+
+    int seccomp_sigsys_decode(seccomp_data *data,
+                              const siginfo_t *si, const void *uc)
+
+    int seccomp_sigsys_set_return_value(siginfo_t *si, void *uc, long ret)
 
 # kate: syntax python;
 # kate: indent-mode python; space-indent on; indent-width 4; mixedindent off;

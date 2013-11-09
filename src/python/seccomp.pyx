@@ -70,10 +70,16 @@ Example:
 __author__ =  'Paul Moore <paul@paul-moore.com>'
 __date__ = "7 January 2013"
 
+cimport cython
 from libc.stdint cimport uint32_t
-import errno
+from libc.stdlib cimport _exit
+cimport libc.string
 
 cimport libseccomp
+
+import errno
+import sys
+import traceback
 
 KILL = libseccomp.SCMP_ACT_KILL
 TRAP = libseccomp.SCMP_ACT_TRAP
@@ -581,6 +587,136 @@ cdef class SyscallFilter:
         rc = libseccomp.seccomp_export_bpf(self._ctx, file.fileno())
         if rc != 0:
             raise RuntimeError(str.format("Library error (errno = {0})", rc))
+
+@cython.internal
+cdef class _SeccompDataPtr:
+    """Internal hack to workaround the fact that C objects can't be passed
+    into __cinit__.
+    """
+    cdef libseccomp.seccomp_data *_ptr
+
+@cython.final
+cdef class TrappedSyscall:
+    """Represents a syscall invocation that was trapped.
+
+    The raw arguments are stored in the args array.  All syscalls will
+    have the same number of arguments, and they relate to the
+    logical arguments in an architecture-specific manner.
+    """
+    cdef libseccomp.seccomp_data _data
+    cdef readonly object args
+
+    def __cinit__(self, _SeccompDataPtr ptr):
+        libc.string.memcpy(&self._data, ptr._ptr, cython.sizeof(self._data))
+        self.args = [self._data.args[i] for i in xrange(6)]
+
+    property arch:
+        """The architecture of the trapped syscall"""
+        def __get__(self):
+            return self._data.arch
+
+    property nr:
+        """The trapped syscall number"""
+        def __get__(self):
+            return self._data.nr
+
+    property name:
+        """The name of the trapped syscall"""
+        def __get__(self):
+            try:
+                return resolve_syscall(self.arch, self.nr)
+            except KeyError:
+                # Return something without spaces to minimize grammar problems.
+                return 'arch%x_syscall%d' % (self.arch, self.nr)
+
+    def __str__(self):
+        return '%s(%s)' % (self.name, ', '.join('0x%X' % a for a in self.args))
+
+    def __repr__(self):
+        return '<TrappedSyscall %s>' % self
+
+cdef object _trap_handler
+
+cdef void _raw_trap_handler(int signum, libseccomp.siginfo_t *si, void *uc):
+    cdef libseccomp.seccomp_data data
+    cdef _SeccompDataPtr ptr
+    val = None
+    emulate = False
+
+    try:
+        if libseccomp.seccomp_sigsys_decode(&data, si, uc) == 0:
+            ptr = _SeccompDataPtr()
+            ptr._ptr = &data
+            val = TrappedSyscall(ptr)
+
+            retval = _trap_handler(val)
+
+            if retval != None:
+                if libseccomp.seccomp_sigsys_set_return_value(si, uc,
+                                                              retval) == 0:
+                    emulate = True
+                    return
+
+    finally:
+        # XXX: It's possible for this to recurse.  We should do something
+        # to prevent that and crash more gracefully (as opposed to eventually
+        # dying when the stack overflows).
+        if not emulate:
+            _exit(libseccomp.SIGSYS)
+
+def set_trap_handler(handler):
+    """Sets a handler for trapped syscalls.  The handler will be passed a
+    TrappedSyscall object as its argument or None if libseccomp could
+    not decode the trapped syscall.
+
+    This overrides the SIGSYS handler.  It will interact badly with
+    other libraries (such as the standard Python signal library) that
+    may manipulate the SIGSYS handler.
+
+    The trap handler can return None to kill the process or it can return
+    an integer to cause the syscall to appear to return that integer.
+
+    Note that, if libseccomp is unable to set the syscall return value,
+    it will kill the process instead.  (This is unlikely to happen unless
+    you return an out-of-bounds value.)
+
+    You can use set_trap_handler(trace_trapped_syscall) as an easy
+    default to display a traceback and exit.  Alternatively, you can
+    use set_trap_handler(print_trapped_syscall) to print a short message
+    to stdout and exit.
+    """
+    global _trap_handler
+    _trap_handler = handler
+
+    cdef libseccomp.sigaction_struct sa
+    libc.string.memset(&sa, 0, cython.sizeof(sa))
+    sa.sa_sigaction = _raw_trap_handler
+    sa.sa_flags = libseccomp.SA_SIGINFO | libseccomp.SA_NODEFER
+    libseccomp.sigemptyset(&sa.sa_mask)
+
+    libseccomp.sigaction(libseccomp.SIGSYS, &sa, NULL)
+
+def get_trap_handler():
+    """Returns the handler most recently loaded by set_trap_handler."""
+    global _trap_handler
+    return _trap_handler
+
+def print_trapped_syscall(trapped_syscall):
+    """A trap handler that prints a short message to stdout."""
+    if trapped_syscall is not None:
+        print 'Dying due to seccomp-blocked syscall %s' % trapped_syscall
+    else:
+        print 'Dying due to undecodable seccomp-blocked syscall'
+
+def trace_trapped_syscall(trapped_syscall):
+    """A trap handler that prints an explanation and traceback to stderr."""
+    print >>sys.stderr, 'Dying due to seccomp-blocked syscall'
+    print >>sys.stderr, 'Traceback (most recent call last):'
+    traceback.print_stack()
+    if trapped_syscall is not None:
+        print >>sys.stderr, '  %s' % trapped_syscall
+    else:
+        print >>sys.stderr, '  Failed to decode the offending syscall'
 
 # kate: syntax python;
 # kate: indent-mode python; space-indent on; indent-width 4; mixedindent off;
